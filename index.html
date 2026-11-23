@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Notes</title>
+<script>
+  try {
+    var t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('theme');
+    if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+  } catch (e) {}
+</script>
+<style>
+  :root { --bg:#f5f6f4; --side:#1f2a24; --sidetx:#d9e2dc; --card:#fff; --text:#1d1d1b; --muted:#77776f; --line:#e3e3dc; --accent:#00a82d; --danger:#d23b3b; --sel:#e9f7ee; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme=light]) { --bg:#161618; --side:#101311; --card:#212125; --text:#ececea; --muted:#8e8e95; --line:#34343a; --accent:#2ecc5a; --danger:#ff6b6b; --sel:#1d3326; } }
+  :root[data-theme=dark] { --bg:#161618; --side:#101311; --card:#212125; --text:#ececea; --muted:#8e8e95; --line:#34343a; --accent:#2ecc5a; --danger:#ff6b6b; --sel:#1d3326; }
+  * { box-sizing: border-box; }
+  [hidden] { display:none !important; }
+  html, body { height:100%; margin:0; }
+  body { font:15px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  input, textarea, button, select { font:inherit; color:inherit; }
+  button { cursor:pointer; border:1px solid var(--line); background:var(--card); border-radius:8px; padding:6px 10px; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  button.danger { color:var(--danger); }
+  input[type=text], input[type=search], input[type=date], select { border:1px solid var(--line); background:var(--card); border-radius:8px; padding:7px 10px; }
+  #app { display:grid; grid-template-columns:230px 340px 1fr; height:100vh; }
+  #side, #list, #note, #page { min-height:0; overflow:auto; }
+  /* sidebar */
+  #side { background:var(--side); color:var(--sidetx); display:flex; flex-direction:column; padding:12px 8px; gap:4px; }
+  #side h1 { font-size:18px; margin:2px 8px 8px; color:#fff; }
+  #side input { background:#ffffff14; border-color:#ffffff22; color:#fff; margin:0 4px 6px; width:calc(100% - 8px); }
+  #side .newbtn { margin:0 4px 8px; width:calc(100% - 8px); padding:9px; }
+  #sidenav { display:flex; flex-direction:column; gap:2px; flex:1; }
+  .nav { display:flex; align-items:center; gap:6px; padding:6px 10px; border-radius:8px; cursor:pointer; user-select:none; }
+  .nav:hover { background:#ffffff14; }
+  .nav.on { background:#ffffff26; color:#fff; font-weight:600; }
+  .nav .nm { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .nav .ct { font-size:12px; opacity:.7; }
+  .nav .mini { display:none; background:none; border:0; color:inherit; padding:0 4px; }
+  .nav:hover .mini { display:inline; }
+  .nav.add { opacity:.8; border:1px dashed #ffffff44; margin:4px 4px 0; }
+  .sec { display:flex; justify-content:space-between; align-items:center; margin:12px 10px 2px; font-size:12px; text-transform:uppercase; letter-spacing:.06em; opacity:.6; }
+  .stack { margin:6px 10px 0; font-size:12px; opacity:.55; }
+  .nbform { margin:4px; display:grid; gap:4px; }
+  .nbform input { margin:0 !important; width:100% !important; }
+  .nbform div { display:flex; gap:4px; } .nbform button { flex:1; background:#ffffff14; border-color:#ffffff22; }
+  .foot { margin-top:auto; display:flex; gap:6px; flex-wrap:wrap; padding:8px 4px 0; }
+  .foot button { background:#ffffff14; border-color:#ffffff22; color:inherit; font-size:12px; padding:5px 8px; }
+  /* list */
+  #list { background:var(--card); border-right:1px solid var(--line); border-left:1px solid var(--line); display:flex; flex-direction:column; }
+  .lhead { display:flex; align-items:center; gap:8px; padding:12px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--card); z-index:1; }
+  .lhead b { flex:1; font-size:16px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fbar { display:grid; gap:6px; padding:8px 12px; border-bottom:1px solid var(--line); font-size:13px; }
+  .fbar .frow { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .fbar .frow > span { width:42px; color:var(--muted); }
+  .fbar input, .fbar select, .fbar button { padding:4px 8px; font-size:13px; }
+  .fbar input[type=search] { width:100%; }
+  .fbar input[type=date] { width:112px; padding:4px 4px; }
+  .fbar select { max-width:96px; }
+  .item { padding:10px 14px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .item:hover { background:var(--bg); }
+  .item.on { background:var(--sel); }
+  .item .t { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .item .s { color:var(--muted); font-size:13px; max-height:2.9em; overflow:hidden; }
+  .item .s mark { background:#ffe45c; color:#000; border-radius:2px; }
+  .item .m { color:var(--muted); font-size:12px; margin-top:3px; display:flex; gap:8px; flex-wrap:wrap; }
+  .empty { color:var(--muted); text-align:center; padding:40px 16px; }
+  /* editor */
+  #note { background:var(--card); display:flex; flex-direction:column; }
+  #note .none { margin:auto; color:var(--muted); }
+  .tb { display:flex; flex-wrap:wrap; gap:4px; padding:8px 12px; border-bottom:1px solid var(--line); align-items:center; }
+  .tb button { padding:4px 9px; min-width:32px; }
+  .tb .sp { flex:1; }
+  #meta { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 20px 0; }
+  .chip { display:inline-flex; align-items:center; gap:4px; background:var(--sel); border:1px solid var(--line); border-radius:99px; padding:1px 4px 1px 10px; font-size:13px; }
+  .chip button { border:0; background:none; padding:0 4px; color:var(--muted); }
+  #ttl { border:0; outline:0; font-size:26px; font-weight:700; padding:12px 20px 4px; background:transparent; width:100%; }
+  #find { display:none; padding:6px 20px; gap:6px; }
+  #find.on { display:flex; }
+  #ed { flex:1; padding:10px 20px 30px; outline:0; overflow-wrap:anywhere; min-height:200px; }
+  #ed img { max-width:100%; height:auto; }
+  #ed table { border-collapse:collapse; } #ed td, #ed th { border:1px solid var(--line); padding:4px 8px; min-width:60px; }
+  #ed blockquote { border-left:3px solid var(--accent); margin:8px 0; padding-left:12px; color:var(--muted); }
+  #ed pre { background:var(--bg); padding:10px; border-radius:8px; overflow:auto; }
+  #ed mark { background:#ffe45c; color:#000; }
+  #ed ul.todo { list-style:none; padding-left:4px; }
+  #ed ul.todo li { padding-left:26px; position:relative; }
+  #ed ul.todo li::before { content:"\2610"; position:absolute; left:0; font-size:18px; cursor:pointer; }
+  #ed ul.todo li[data-done="1"]::before { content:"\2611"; color:var(--accent); }
+  #ed ul.todo li[data-done="1"] { text-decoration:line-through; color:var(--muted); }
+  #atts { display:flex; flex-wrap:wrap; gap:8px; padding:0 20px 14px; }
+  .att { display:flex; gap:6px; align-items:center; border:1px solid var(--line); border-radius:8px; padding:4px 8px; font-size:13px; }
+  .att a { color:var(--accent); text-decoration:none; }
+  .att button { border:0; background:none; padding:0 2px; }
+  #trashbar { display:none; padding:8px 20px; background:#fff3cd; color:#5b4a00; gap:8px; align-items:center; }
+  /* tasks/templates page */
+  #page { display:none; grid-column:2 / 4; background:var(--card); padding:20px 24px; border-left:1px solid var(--line); }
+  #page h2 { margin:0 0 12px; }
+  .trow { display:flex; gap:10px; align-items:center; padding:8px 0; border-bottom:1px solid var(--line); }
+  .trow input[type=checkbox] { width:20px; height:20px; accent-color:var(--accent); }
+  .trow .tx { flex:1; overflow-wrap:anywhere; } .trow.done .tx { text-decoration:line-through; color:var(--muted); }
+  .due { font-size:12px; color:var(--muted); } .due.over { color:var(--danger); font-weight:600; } .due.today { color:#c77700; font-weight:600; }
+  .addrow { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; } .addrow input[type=text] { flex:1; min-width:160px; }
+  .tabs { display:flex; gap:6px; margin-bottom:8px; } .tabs button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; }
+  .card { border:1px solid var(--line); border-radius:12px; padding:14px; cursor:pointer; background:var(--bg); }
+  .card:hover { border-color:var(--accent); } .card b { display:block; margin-bottom:4px; } .card span { font-size:13px; color:var(--muted); }
+  #status { position:fixed; right:12px; bottom:10px; font-size:13px; color:var(--muted); background:var(--card); border-radius:8px; padding:2px 8px; }
+  #status.err { color:#fff; background:var(--danger); font-weight:600; }
+  #back, #menu { display:none; }
+  /* phone layout */
+  @media (max-width: 820px) {
+    #app { display:block; }
+    #side, #list, #note, #page { display:none; width:100%; height:100vh; }
+    body[data-pane=nav] #side { display:flex; }
+    body[data-pane=list]:not(.paged) #list { display:flex; }
+    body[data-pane=note]:not(.paged) #note { display:flex; }
+    body[data-pane=list].paged #page { display:block; }
+    #back, #menu { display:inline-block; }
+    #ed { font-size:16px; }
+  }
+  @media (pointer: coarse) { button, input, select { min-height:40px; } .nav .mini { display:inline; } }
+  @media (min-width: 821px) { body.paged #list, body.paged #note { display:none; } body.paged #page { display:block; } }
+  @media print { #side, #list, .tb, #meta, #page, #find, #atts, #status, #trashbar { display:none !important; } #app { display:block; } #note { display:block !important; overflow:visible; } }
+</style>
+</head>
+<body data-pane="list">
+<div id="app">
+  <nav id="side"></nav>
+  <section id="list"></section>
+  <section id="note"></section>
+  <section id="page"></section>
+</div>
+<div id="status"></div>
+<input type="file" id="fileAtt" hidden multiple>
+<input type="file" id="fileImg" hidden accept="image/*" multiple>
+<input type="file" id="fileEnex" hidden accept=".enex,.xml">
+<script>
+const DEMO = new URLSearchParams(location.search).has('demo');
+const $ = (s, r = document) => r.querySelector(s);
+function h(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e[k] = v;
+    else if (v !== false && v != null) e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) e.append(c.nodeType ? c : document.createTextNode(c));
+  return e;
+}
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* ---------- state ---------- */
+// S = small "meta" document stored in the database: notebooks, tasks, templates, id counter.
+let S = { notebooks: [], tasks: [], templates: [], nextId: 1 };
+// Notes live in the database. The page holds only the current result list and the open note.
+let list = [], counts = { all: 0, pinned: 0, trash: 0, nb: {}, tags: {} }, curNote = null, sel = null;
+let view = { type: 'all' }, q = '', loaded = false, taskTab = 'open', pane = 'list', addingNb = false;
+const F = { title: '', from: '', to: '', field: 'updated', sort: 'updated', order: 'desc' };   // list filters
+const newId = () => S.nextId++;
+const cur = () => curNote;
+const textOf = html => new DOMParser().parseFromString(html || '', 'text/html').body.textContent.replace(/\s+/g, ' ').trim();
+
+function setStatus(msg, err) { const s = $('#status'); s.textContent = msg; s.className = err ? 'err' : ''; s.style.display = msg ? '' : 'none'; }
+
+/* ---------- storage backends: the real server (SQLite) or an in-memory copy for ?demo ---------- */
+const JSONH = { 'Content-Type': 'application/json' };
+const ok = r => { if (!r.ok) throw new Error(r.status); return r; };
+const netApi = {
+  list: p => fetch('/api/notes?' + new URLSearchParams(p), { cache: 'no-store' }).then(ok).then(r => r.json()),
+  get: id => fetch('/api/notes/' + id, { cache: 'no-store' }).then(ok).then(r => r.json()),
+  create: b => fetch('/api/notes', { method: 'POST', headers: JSONH, body: JSON.stringify(b) }).then(ok).then(r => r.json()),
+  save: (id, b, keep) => fetch('/api/notes/' + id, { method: 'PUT', headers: JSONH, body: JSON.stringify(b), keepalive: !!keep }).then(ok),
+  del: id => fetch('/api/notes/' + id, { method: 'DELETE' }).then(ok),
+  emptyTrash: () => fetch('/api/notes?view=trash', { method: 'DELETE' }).then(ok),
+  summary: () => fetch('/api/summary', { cache: 'no-store' }).then(ok).then(r => r.json()),
+  getMeta: () => fetch('/api/meta', { cache: 'no-store' }).then(ok).then(r => r.json()),
+  putMeta: m => fetch('/api/meta', { method: 'PUT', headers: JSONH, body: JSON.stringify({ notebooks: m.notebooks, tasks: m.tasks, templates: m.templates, nextId: m.nextId }) }).then(ok),
+  move: (from, to) => fetch('/api/move', { method: 'POST', headers: JSONH, body: JSON.stringify({ from, to }) }).then(ok),
+  renameTag: (from, to) => fetch('/api/tag-rename', { method: 'POST', headers: JSONH, body: JSON.stringify({ from, to }) }).then(ok)
+};
+function demoApi() {
+  const db = []; let nid = 1;
+  const snip = (n, words) => {
+    if (!words.length) return n.text.slice(0, 160);
+    const i = n.text.toLowerCase().indexOf(words[0]); if (i < 0) return n.text.slice(0, 160);
+    return n.text.slice(Math.max(0, i - 40), i) + '<<' + n.text.slice(i, i + words[0].length) + '>>' + n.text.slice(i + words[0].length, i + 120);
+  };
+  return {
+    async list(p) {
+      let l = db.filter(n => !!n.trashed === (p.view === 'trash'));
+      if (p.view === 'pinned') l = l.filter(n => n.pinned);
+      if (p.nb) l = l.filter(n => n.nb == p.nb);
+      if (p.nbs) { const s = p.nbs.split(',').map(Number); l = l.filter(n => s.includes(n.nb)); }
+      if (p.tag) l = l.filter(n => n.tags.some(t => t.toLowerCase() === p.tag.toLowerCase()));
+      if (p.title) l = l.filter(n => n.title.toLowerCase().includes(p.title.toLowerCase()));
+      const f = p.field === 'created' ? 'created' : 'updated';
+      if (p.from) l = l.filter(n => n[f] >= +p.from);
+      if (p.to) l = l.filter(n => n[f] <= +p.to);
+      if (p.has === 'image') l = l.filter(n => /<img/i.test(n.html));
+      if (p.has === 'attachment') l = l.filter(n => n.att.length);
+      if (p.todo === 'true') l = l.filter(n => /data-done="0"/.test(n.html));
+      const words = (p.q || '').toLowerCase().split(/\s+/).filter(Boolean);
+      l = l.filter(n => { const hay = (n.title + ' ' + n.text + ' ' + n.tags.join(' ')).toLowerCase(); return words.every(w => hay.includes(w)); });
+      const dir = p.order === 'asc' ? 1 : -1;
+      const cmp = p.sort === 'title' ? (a, b) => dir * a.title.localeCompare(b.title) : p.sort === 'created' ? (a, b) => dir * (a.created - b.created) : (a, b) => dir * (a.updated - b.updated);
+      const browsing = !(words.length || p.title || p.from || p.to);
+      l.sort((a, b) => (browsing ? b.pinned - a.pinned : 0) || cmp(a, b));
+      return l.map(n => ({ id: n.id, title: n.title, nb: n.nb, pinned: n.pinned, trashed: n.trashed, created: n.created, updated: n.updated, tags: n.tags, att: n.att.length, snippet: snip(n, words) }));
+    },
+    async get(id) { return JSON.parse(JSON.stringify(db.find(n => n.id === id))); },
+    async create(b) { const n = Object.assign({ title: '', html: '', text: '', nb: 1, pinned: 0, trashed: 0, tags: [], att: [] }, JSON.parse(JSON.stringify(b)), { id: nid++ }); db.push(n); return { id: n.id }; },
+    async save(id, b) { const n = db.find(x => x.id === id); Object.assign(n, JSON.parse(JSON.stringify(b))); },
+    async del(id) { db.splice(db.findIndex(n => n.id === id), 1); },
+    async emptyTrash() { for (let i = db.length - 1; i >= 0; i--) if (db[i].trashed) db.splice(i, 1); },
+    async summary() {
+      const live = db.filter(n => !n.trashed), c = { all: live.length, pinned: live.filter(n => n.pinned).length, trash: db.length - live.length, nb: {}, tags: {} };
+      for (const n of live) { c.nb[n.nb] = (c.nb[n.nb] || 0) + 1; for (const t of n.tags) c.tags[t] = (c.tags[t] || 0) + 1; }
+      return c;
+    },
+    async getMeta() { return {}; }, async putMeta() {},
+    async move(from, to) { for (const n of db) if (n.nb === from) n.nb = to; },
+    async renameTag(from, to) { for (const n of db) if (n.tags.includes(from)) { n.tags = n.tags.filter(t => t !== from); if (to && !n.tags.includes(to)) n.tags.push(to); } }
+  };
+}
+const api = DEMO ? demoApi() : netApi;
+
+/* ---------- loading, migration, saving ---------- */
+async function load() {
+  try {
+    S = Object.assign({ notebooks: [], tasks: [], templates: [], nextId: 1 }, await api.getMeta());
+    if (!DEMO) await maybeMigrate();
+    if (!S.notebooks.length) {
+      S.notebooks.push({ id: newId(), name: 'First Notebook', stack: '' });
+      if (DEMO) S.notebooks.push({ id: newId(), name: 'Work', stack: 'Projects' });
+      await api.putMeta(S);
+    }
+    if (DEMO) await seedDemo();
+    loaded = true; setStatus('');
+  } catch (e) { setStatus('NOT SAVED: cannot reach the server. Run start.bat.', true); }
+  renderAll(); refresh();
+}
+async function seedDemo() {
+  const now = Date.now(), d = 86400000, nb = S.notebooks[0].id, wk = S.notebooks[1].id;
+  const mk = (title, html, o) => api.create(Object.assign({ title, html, text: textOf(html), nb, pinned: 0, trashed: 0, tags: [], created: now, updated: now, att: [] }, o));
+  await mk('Welcome to My Notes', '<p>Notes, <b>notebooks</b>, tags, tasks and templates.</p><ul class="todo"><li data-done="1">Try the editor</li><li data-done="0">Add a tag</li></ul>', { tags: ['welcome'], pinned: 1 });
+  await mk('Groceries', '<p>Milk, eggs, coffee beans</p>', { created: now - 3 * d, updated: now - 3 * d });
+  await mk('Website launch plan', '<p>Launch the new website in spring.</p>', { nb: wk, tags: ['work'], created: now - 20 * d, updated: now - 12 * d });
+  S.tasks.push({ id: newId(), text: 'Pay the electricity bill', due: '', done: false });
+}
+async function maybeMigrate() {   // one-time import of the old notes.json
+  const lg = await fetch('/api/legacy', { cache: 'no-store' }).then(ok).then(r => r.json());
+  if (!lg || !Array.isArray(lg.notes)) return;
+  setStatus('Importing your earlier notes into the database…');
+  if (lg.v === 2) { S.notebooks = lg.notebooks || S.notebooks; S.tasks = lg.tasks || []; S.templates = lg.templates || []; }
+  if (!S.notebooks.length) S.notebooks.push({ id: newId(), name: 'First Notebook', stack: '' });
+  S.nextId = Math.max(S.nextId, 1 + Math.max(0, ...S.notebooks.map(b => b.id)));
+  for (const o of lg.notes) {
+    const html = o.html != null ? sanitize(o.html) : '<p>' + esc(o.body || '').replace(/\n/g, '<br>') + '</p>';
+    const t = o.updated || Date.now();
+    await api.create({ title: o.title || '', html, text: textOf(html), nb: S.notebooks.some(b => b.id === o.nb) ? o.nb : S.notebooks[0].id, pinned: +!!o.pinned, trashed: +!!o.trashed, created: o.created || t, updated: t, tags: o.tags || [], att: o.att || [] });
+  }
+  await api.putMeta(S);
+  await fetch('/api/legacy/done', { method: 'POST', headers: JSONH }).then(ok);
+}
+let metaTimer = null;
+function scheduleSave() { if (DEMO || !loaded) return; clearTimeout(metaTimer); metaTimer = setTimeout(saveMeta, 400); }
+function saveMeta() { clearTimeout(metaTimer); metaTimer = null; return api.putMeta(S).then(() => setStatus('')).catch(() => setStatus('NOT SAVED: could not write to the database.', true)); }
+
+let noteTimer = null, dirty = false, saveChain = Promise.resolve();
+function queueNote() { dirty = true; clearTimeout(noteTimer); noteTimer = setTimeout(() => flushNote(), 500); }
+function noteBody(n) {
+  const b = { title: n.title, html: n.html, text: textOf(n.html), nb: n.nb, pinned: +!!n.pinned, trashed: +!!n.trashed, created: n.created, updated: n.updated, tags: n.tags };
+  if (n._attDirty) { b.att = n.att; n._attDirty = false; }   // attachments are only re-sent when they changed
+  return b;
+}
+function flushNote(keep) {
+  clearTimeout(noteTimer);
+  if (!dirty || !curNote) return saveChain;
+  dirty = false;
+  const n = curNote, body = noteBody(n);
+  saveChain = saveChain.then(() => api.save(n.id, body, keep)).then(() => { setStatus(''); if (!keep) refresh(); })
+    .catch(() => setStatus('NOT SAVED: could not write to the database.', true));
+  return saveChain;
+}
+const commit = () => { dirty = true; return flushNote(); };
+addEventListener('pagehide', () => { if (dirty) flushNote(true); if (metaTimer) saveMeta(); });
+
+let refreshSeq = 0, refreshTimer = null;
+const refreshSoon = () => { clearTimeout(refreshTimer); refreshTimer = setTimeout(refresh, 250); };
+async function refresh() {
+  const seq = ++refreshSeq;
+  try {
+    const [l, c] = await Promise.all([api.list(buildParams()), api.summary()]);
+    if (seq !== refreshSeq) return;
+    list = l; counts = c; renderSide(); renderList();
+  } catch (e) { if (seq === refreshSeq) setStatus('Cannot reach the server. Run start.bat.', true); }
+}
+function buildParams() {
+  const p = {};
+  if (view.type === 'trash') p.view = 'trash'; else if (view.type === 'pinned') p.view = 'pinned';
+  if (view.type === 'notebook') p.nb = view.id;
+  if (view.type === 'tag') p.tag = view.id;
+  let nbq = false; const nbs = [];
+  const rest = q.replace(/(\w+):("[^"]+"|\S+)/g, (m, k, v) => {
+    k = k.toLowerCase(); v = v.replace(/"/g, '');
+    if (k === 'tag') p.tag = v;
+    else if (k === 'notebook') { nbq = true; nbs.push(...S.notebooks.filter(b => b.name.toLowerCase().includes(v.toLowerCase())).map(b => b.id)); }
+    else if (k === 'has') p.has = v.startsWith('attach') ? 'attachment' : 'image';
+    else if (k === 'todo') p.todo = v === 'true' ? 'true' : 'false';
+    else return m;
+    return ' ';
+  }).trim();
+  if (nbq) p.nbs = nbs.length ? nbs.join(',') : '0';
+  if (rest) p.q = rest;
+  if (F.title.trim()) p.title = F.title.trim();
+  if (F.from) p.from = new Date(F.from + 'T00:00:00').getTime();
+  if (F.to) p.to = new Date(F.to + 'T23:59:59.999').getTime();
+  p.field = F.field; p.sort = F.sort; p.order = F.order;
+  return p;
+}
+const filtersActive = () => !!(q || F.title || F.from || F.to);
+
+/* ---------- sanitizer (note HTML is untrusted: imports, paste, drop) ---------- */
+const OK = new Set('P DIV BR B STRONG I EM U S STRIKE DEL H1 H2 H3 UL OL LI BLOCKQUOTE PRE CODE A IMG TABLE THEAD TBODY TR TD TH HR SPAN MARK'.split(' '));
+const DROP = new Set('SCRIPT STYLE IFRAME OBJECT EMBED LINK META NOSCRIPT SVG MATH FORM TEMPLATE TITLE HEAD'.split(' '));
+function cleanNode(node) {
+  for (const c of [...node.childNodes]) {
+    if (c.nodeType === 3) continue;
+    if (c.nodeType !== 1 || DROP.has(c.tagName)) { c.remove(); continue; }
+    cleanNode(c);
+    if (!OK.has(c.tagName)) { c.replaceWith(...c.childNodes); continue; }
+    for (const a of [...c.attributes]) {
+      const n = a.name, v = a.value;
+      const keep = (n === 'href' && c.tagName === 'A' && /^(https?:|mailto:)/i.test(v)) ||
+        (n === 'src' && c.tagName === 'IMG' && /^(data:image\/(png|jpeg|gif|webp|svg\+xml)[;,]|https?:)/i.test(v)) ||
+        (n === 'class' && c.tagName === 'UL' && v === 'todo') ||
+        (n === 'data-done' && (v === '0' || v === '1')) ||
+        ((n === 'colspan' || n === 'rowspan') && /^\d{1,2}$/.test(v)) ||
+        (n === 'alt' && c.tagName === 'IMG');
+      if (n === 'style') {
+        const okS = v.split(';').map(s => s.trim()).filter(s => /^(color|background-color|text-align|font-weight|text-decoration)\s*:\s*[#\w\s(),.%-]+$/i.test(s)).join(';');
+        if (okS) c.setAttribute('style', okS); else c.removeAttribute('style');
+      } else if (!keep) c.removeAttribute(n);
+    }
+    if (c.tagName === 'A') { c.setAttribute('rel', 'noopener noreferrer'); c.setAttribute('target', '_blank'); }
+  }
+}
+function sanitize(html) { const d = new DOMParser().parseFromString(html, 'text/html'); cleanNode(d.body); return d.body.innerHTML; }
+
+/* ---------- views ---------- */
+const isPage = () => view.type === 'tasks' || view.type === 'templates';
+async function go(v) {
+  await flushNote();
+  view = v; pane = 'list'; addingNb = false; curNote = null; sel = null;
+  renderAll(true); refresh();
+}
+async function select(id) {
+  await flushNote();
+  try { curNote = await api.get(id); } catch (e) { setStatus('Could not open that note.', true); return; }
+  sel = id; pane = 'note'; renderAll(true); renderList();
+}
+
+/* ---------- rendering ---------- */
+function renderAll(editorToo) { renderSide(); renderList(); if (editorToo || !$('#ed')) renderEditor(); renderPage(); document.body.classList.toggle('paged', isPage()); document.body.dataset.pane = pane; }
+
+function ensureSideTop() {
+  const side = $('#side');
+  if ($('#sidetop')) return;
+  const search = h('input', { type: 'search', placeholder: 'Search content (tag:x notebook:y has:image)', value: q });
+  search.oninput = () => {
+    q = search.value;
+    if (q && (isPage() || view.type === 'trash')) { view = { type: 'all' }; curNote = null; sel = null; renderEditor(); renderPage(); renderSide(); }
+    pane = 'list'; document.body.classList.toggle('paged', isPage()); document.body.dataset.pane = pane; refreshSoon();
+  };
+  side.append(h('div', { id: 'sidetop' }, h('h1', {}, '📝 My Notes'), search,
+    h('button', { class: 'primary newbtn', onclick: () => newNote() }, '+ New note')), h('div', { id: 'sidenav' }));
+}
+function renderSide() {
+  ensureSideTop();
+  if (addingNb) return;   // keep the notebook name box intact while typing
+  const nav = $('#sidenav'); nav.textContent = '';
+  const navItem = (label, count, on, fn, extra) => h('div', { class: 'nav' + (on ? ' on' : ''), onclick: fn }, h('span', { class: 'nm' }, label), extra, count != null ? h('span', { class: 'ct' }, count) : null);
+  nav.append(
+    navItem('All Notes', counts.all, view.type === 'all', () => go({ type: 'all' })),
+    navItem('Pinned', counts.pinned, view.type === 'pinned', () => go({ type: 'pinned' })),
+    navItem('Tasks', S.tasks.filter(t => !t.done).length, view.type === 'tasks', () => go({ type: 'tasks' })),
+    navItem('Templates', null, view.type === 'templates', () => go({ type: 'templates' })));
+  nav.append(h('div', { class: 'sec' }, 'Notebooks'));
+  const stacks = [...new Set(S.notebooks.map(b => b.stack || ''))].sort((a, b) => (a === '') - (b === '') || a.localeCompare(b));
+  for (const st of stacks) {
+    if (st) nav.append(h('div', { class: 'stack' }, '📚 ' + st));
+    for (const b of S.notebooks.filter(b => (b.stack || '') === st)) {
+      nav.append(navItem('📁 ' + b.name, counts.nb[b.id] || 0, view.type === 'notebook' && view.id === b.id, () => go({ type: 'notebook', id: b.id }),
+        h('button', { class: 'mini', title: 'Rename or delete notebook', onclick: e => { e.stopPropagation(); editNotebook(b); } }, '✎')));
+    }
+  }
+  if (addingNb) return;
+  nav.append(h('div', { class: 'nav add', onclick: () => { addingNb = true; renderNbForm(); } }, '+ New notebook'));
+  const tk = Object.keys(counts.tags).sort((a, b) => a.localeCompare(b));
+  if (tk.length) nav.append(h('div', { class: 'sec' }, 'Tags'));
+  for (const t of tk) nav.append(navItem('# ' + t, counts.tags[t], view.type === 'tag' && view.id === t, () => go({ type: 'tag', id: t }),
+    h('button', { class: 'mini', title: 'Rename or delete tag', onclick: e => { e.stopPropagation(); editTag(t); } }, '✎')));
+  nav.append(navItem('🗑 Trash', counts.trash, view.type === 'trash', () => go({ type: 'trash' })));
+  nav.append(h('div', { class: 'foot' },
+    h('button', { onclick: () => $('#fileEnex').click() }, 'Import .enex'),
+    h('button', { onclick: exportAll }, 'Export all'),
+    h('button', { onclick: cycleTheme }, 'Theme')));
+}
+function renderNbForm() {   // inline "create notebook" form
+  const nav = $('#sidenav'); nav.textContent = '';
+  const name = h('input', { type: 'text', placeholder: 'Notebook name', maxlength: 80 }), stack = h('input', { type: 'text', placeholder: 'Stack / group (optional)', maxlength: 80 });
+  const finish = () => { addingNb = false; renderSide(); };
+  const create = async () => { const nm = name.value.trim(); if (!nm) { name.focus(); return; } const b = createNotebook(nm, stack.value.trim()); addingNb = false; await saveMeta(); go({ type: 'notebook', id: b.id }); };
+  for (const i of [name, stack]) i.onkeydown = e => { if (e.key === 'Enter') create(); if (e.key === 'Escape') finish(); };
+  nav.append(h('div', { class: 'sec' }, 'New notebook'), h('div', { class: 'nbform' }, name, stack, h('div', {}, h('button', { class: 'primary', onclick: create }, 'Create'), h('button', { onclick: finish }, 'Cancel'))));
+  name.focus();
+}
+
+const title = n => n.title || 'Untitled';
+function viewName() {
+  if (view.type === 'notebook') return '📁 ' + ((S.notebooks.find(b => b.id === view.id) || {}).name || '');
+  if (view.type === 'tag') return '# ' + view.id;
+  return { all: 'All Notes', pinned: 'Pinned', trash: 'Trash' }[view.type] || '';
+}
+function ensureListShell() {
+  const el = $('#list'); if ($('#items')) return;
+  const titleIn = h('input', { type: 'search', placeholder: 'Search note titles', value: F.title });
+  titleIn.oninput = () => { F.title = titleIn.value; refreshSoon(); };
+  const field = h('select', { title: 'Which date to filter and sort by' }, h('option', { value: 'updated' }, 'Updated'), h('option', { value: 'created' }, 'Created'));
+  field.onchange = () => { F.field = field.value; refreshSoon(); };
+  const from = h('input', { type: 'date', title: 'From date' }), to = h('input', { type: 'date', title: 'To date' });
+  from.onchange = () => { F.from = from.value; refreshSoon(); };
+  to.onchange = () => { F.to = to.value; refreshSoon(); };
+  const sort = h('select', { title: 'Sort by' }, ...[['updated', 'Date updated'], ['created', 'Date created'], ['title', 'Title'], ['relevance', 'Relevance']].map(([v, l]) => h('option', { value: v }, l)));
+  sort.onchange = () => { F.sort = sort.value; refreshSoon(); };
+  const order = h('button', { title: 'Reverse sort order' }, '');
+  const paintOrder = () => { order.textContent = F.order === 'desc' ? '↓ Newest/Z-A' : '↑ Oldest/A-Z'; };
+  order.onclick = () => { F.order = F.order === 'desc' ? 'asc' : 'desc'; paintOrder(); refreshSoon(); };
+  paintOrder();
+  const clear = h('button', { onclick: () => { Object.assign(F, { title: '', from: '', to: '', field: 'updated', sort: 'updated', order: 'desc' }); q = ''; const s = $('#sidetop input'); if (s) s.value = ''; titleIn.value = ''; from.value = ''; to.value = ''; field.value = 'updated'; sort.value = 'updated'; paintOrder(); refresh(); } }, 'Clear');
+  el.append(h('div', { class: 'lhead' }, h('button', { id: 'menu', title: 'Notebooks and menu', onclick: () => { pane = 'nav'; renderAll(); } }, '☰'), h('b', { id: 'ltitle' }), h('button', { id: 'lempty', class: 'danger', onclick: emptyTrash }, 'Empty trash'), h('button', { id: 'lnew', class: 'primary', title: 'New note', onclick: () => newNote() }, '+')),
+    h('div', { class: 'fbar' }, titleIn,
+      h('div', { class: 'frow' }, h('span', {}, 'Dates'), field, from, h('span', { style: 'width:auto' }, '–'), to),
+      h('div', { class: 'frow' }, h('span', {}, 'Sort'), sort, order, clear)),
+    h('div', { id: 'items' }));
+}
+function markSnippet(s) {   // server marks hits as <<word>>; build DOM nodes (no innerHTML)
+  const frag = document.createDocumentFragment();
+  s.split('<<').forEach((part, i) => {
+    if (i === 0) { frag.append(part); return; }
+    const [hit, ...rest] = part.split('>>');
+    frag.append(h('mark', {}, hit), rest.join('>>'));
+  });
+  return frag;
+}
+function renderList() {
+  if (isPage()) return;
+  ensureListShell();
+  $('#ltitle').textContent = viewName() + ' (' + list.length + ')';
+  $('#lempty').hidden = !(view.type === 'trash' && list.length);
+  $('#lnew').hidden = view.type === 'trash';
+  const it = $('#items'); it.textContent = '';
+  if (!list.length) it.append(h('div', { class: 'empty' }, filtersActive() ? 'No notes match your search.' : view.type === 'trash' ? 'Trash is empty.' : 'No notes yet.'));
+  for (const n of list) {
+    it.append(h('div', { class: 'item' + (n.id === sel ? ' on' : ''), onclick: () => select(n.id) },
+      h('div', { class: 't' }, (n.pinned ? '📌 ' : '') + title(n)),
+      h('div', { class: 's' }, markSnippet(n.snippet || '')),
+      h('div', { class: 'm' }, new Date(n.updated).toLocaleDateString(), n.att ? '📎 ' + n.att : null, '📁 ' + ((S.notebooks.find(b => b.id === n.nb) || {}).name || ''), ...n.tags.map(t => '#' + t))));
+  }
+}
+
+const TB = [
+  ['B', 'Bold', () => cmd('bold')], ['I', 'Italic', () => cmd('italic')], ['U', 'Underline', () => cmd('underline')], ['S', 'Strikethrough', () => cmd('strikeThrough')],
+  ['H1', 'Heading 1', () => cmd('formatBlock', 'h1')], ['H2', 'Heading 2', () => cmd('formatBlock', 'h2')], ['¶', 'Normal text', () => cmd('formatBlock', 'p')],
+  ['• List', 'Bulleted list', () => cmd('insertUnorderedList')], ['1. List', 'Numbered list', () => cmd('insertOrderedList')], ['☑ To-do', 'Checklist', checklist],
+  ['❝', 'Quote', () => cmd('formatBlock', 'blockquote')], ['</>', 'Code block', () => cmd('formatBlock', 'pre')], ['🖍', 'Highlight', highlight],
+  ['🔗', 'Link', link], ['▦', 'Insert table', table], ['―', 'Divider', () => cmd('insertHorizontalRule')], ['📅', 'Insert date', () => cmd('insertText', new Date().toLocaleDateString(undefined, { dateStyle: 'medium' }))],
+  ['🖼', 'Insert image', () => $('#fileImg').click()], ['📎', 'Attach file', () => $('#fileAtt').click()], ['🔍', 'Find in note', toggleFind]
+];
+function cmd(c, v) { $('#ed').focus(); document.execCommand(c, false, v); onEdit(); }
+function checklist() {
+  const ed = $('#ed'); ed.focus();
+  const s = getSelection(); let ul = s.anchorNode && (s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentNode).closest('ul');
+  if (!ul || !ed.contains(ul)) { document.execCommand('insertUnorderedList'); ul = (getSelection().anchorNode.nodeType === 1 ? getSelection().anchorNode : getSelection().anchorNode.parentNode).closest('ul'); }
+  if (ul && ed.contains(ul)) { ul.classList.toggle('todo'); ul.querySelectorAll('li').forEach(li => li.dataset.done = li.dataset.done || '0'); }
+  onEdit();
+}
+function highlight() { const t = getSelection().toString(); if (t) cmd('insertHTML', '<mark>' + esc(t) + '</mark>'); }
+function link() {
+  let u = prompt('Link address'); if (!u) return;
+  if (!/^(https?:|mailto:)/i.test(u)) u = 'https://' + u;
+  cmd('createLink', u);
+}
+function table() { const r = '<tr>' + '<td><br></td>'.repeat(3) + '</tr>'; cmd('insertHTML', '<table><tbody>' + r + r + r + '</tbody></table><p><br></p>'); }
+function toggleFind() { const f = $('#find'); f.classList.toggle('on'); if (f.classList.contains('on')) f.querySelector('input').focus(); }
+
+function renderEditor() {
+  const el = $('#note'); el.textContent = '';
+  const n = curNote;
+  if (!n) { el.append(h('div', { class: 'none' }, 'Select or create a note')); return; }
+  const ro = !!n.trashed;
+  if (ro) el.append(h('div', { id: 'trashbar', style: 'display:flex' }, 'This note is in the trash.',
+    h('button', { onclick: async () => { n.trashed = 0; await commit(); curNote = null; sel = null; renderEditor(); } }, 'Restore'),
+    h('button', { class: 'danger', onclick: async () => { if (confirm('Delete this note forever? This cannot be undone.')) { dirty = false; await api.del(n.id); curNote = null; sel = null; renderEditor(); refresh(); } } }, 'Delete forever')));
+  const tb = h('div', { class: 'tb' }, h('button', { id: 'back', onclick: () => { pane = 'list'; renderAll(); } }, '‹ Back'));
+  if (!ro) {
+    for (const [l, t, f] of TB) { const b = h('button', { title: t }, l); b.onmousedown = e => e.preventDefault(); b.onclick = f; tb.append(b); }
+  }
+  tb.append(h('span', { class: 'sp' }),
+    h('button', { title: 'Pin', onclick: async () => { n.pinned = n.pinned ? 0 : 1; await commit(); renderEditor(); } }, n.pinned ? 'Unpin' : '📌 Pin'),
+    h('button', { title: 'Save as template', onclick: () => { S.templates.push({ id: newId(), name: title(n), html: n.html }); scheduleSave(); setStatus('Saved as template'); setTimeout(() => setStatus(''), 1500); } }, 'Template'),
+    h('button', { onclick: () => exportEnex([n], title(n)) }, '.enex'),
+    h('button', { onclick: () => download(title(n) + '.html', '<!doctype html><meta charset="utf-8"><title>' + esc(title(n)) + '</title><h1>' + esc(title(n)) + '</h1>' + sanitize(n.html), 'text/html') }, 'HTML'),
+    h('button', { onclick: () => print() }, 'Print / PDF'),
+    ro ? null : h('button', { class: 'danger', onclick: async () => { n.trashed = 1; await commit(); curNote = null; sel = null; pane = 'list'; renderAll(true); } }, 'Trash'));
+  el.append(tb);
+
+  const ttl = h('input', { id: 'ttl', type: 'text', placeholder: 'Title', value: n.title, maxlength: 200, readonly: ro });
+  ttl.oninput = () => { n.title = ttl.value; touch(n); };
+  const nbSel = h('select', { disabled: ro, title: 'Notebook' }, ...S.notebooks.map(b => h('option', { value: b.id, selected: b.id === n.nb }, '📁 ' + b.name)), h('option', { value: '__new' }, '➕ New notebook…'));
+  nbSel.onchange = async () => {
+    if (nbSel.value === '__new') {
+      const name = (prompt('New notebook name') || '').trim();
+      if (!name) { nbSel.value = n.nb; return; }
+      n.nb = createNotebook(name, '').id; await saveMeta(); touch(n); renderEditor(); refresh();
+    } else { n.nb = +nbSel.value; touch(n); }
+  };
+  const meta = h('div', { id: 'meta' }, nbSel);
+  for (const t of n.tags) meta.append(h('span', { class: 'chip' }, '#' + t, ro ? null : h('button', { onclick: () => { n.tags = n.tags.filter(x => x !== t); touch(n); renderEditor(); } }, '×')));
+  if (!ro) {
+    const ti = h('input', { type: 'text', placeholder: '+ tag', size: 8, list: 'taglist' });
+    const dl = h('datalist', { id: 'taglist' }, ...Object.keys(counts.tags).map(t => h('option', { value: t })));
+    ti.onkeydown = e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); const t = ti.value.trim().replace(/^#/, '').replace(/[,\s]+/g, '-'); if (t && !n.tags.some(x => x.toLowerCase() === t.toLowerCase())) { n.tags.push(t); touch(n); renderEditor(); $('#meta input').focus(); } } };
+    meta.append(ti, dl);
+  }
+  meta.append(h('span', { class: 'due' }, 'Created ' + new Date(n.created).toLocaleString() + ' · ' + textOf(n.html).split(' ').filter(Boolean).length + ' words'));
+  el.append(ttl, meta);
+
+  const find = h('div', { id: 'find' });
+  const fi = h('input', { type: 'text', placeholder: 'Find in note' });
+  fi.onkeydown = e => { if (e.key === 'Enter') window.find(fi.value, false, e.shiftKey, true); if (e.key === 'Escape') toggleFind(); };
+  find.append(fi, h('button', { onclick: () => window.find(fi.value, false, false, true) }, 'Next'), h('button', { onclick: () => window.find(fi.value, false, true, true) }, 'Prev'));
+  el.append(find);
+
+  const ed = h('div', { id: 'ed', contenteditable: ro ? 'false' : 'true', spellcheck: 'true' });
+  ed.innerHTML = sanitize(n.html);
+  ed.oninput = onEdit;
+  ed.onclick = e => {
+    const li = e.target.closest && e.target.closest('ul.todo > li');
+    if (li && e.target === li && e.offsetX < 26 && !ro) { li.dataset.done = li.dataset.done === '1' ? '0' : '1'; onEdit(); return; }
+    const a = e.target.closest && e.target.closest('a');
+    if (a && (e.ctrlKey || e.metaKey || ro)) window.open(a.href, '_blank', 'noopener');
+  };
+  ed.onpaste = e => {
+    const files = [...(e.clipboardData.files || [])];
+    e.preventDefault();
+    if (files.length) { addFiles(files, true); return; }
+    const html = e.clipboardData.getData('text/html');
+    if (html) document.execCommand('insertHTML', false, sanitize(html));
+    else document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
+    onEdit();
+  };
+  ed.ondrop = e => {
+    e.preventDefault();
+    const files = [...(e.dataTransfer.files || [])];
+    if (files.length) addFiles(files, true);
+    else { const t = e.dataTransfer.getData('text/plain'); if (t) { document.execCommand('insertText', false, t); onEdit(); } }
+  };
+  ed.onkeydown = e => { if (e.key === 'Tab') { e.preventDefault(); document.execCommand(e.shiftKey ? 'outdent' : 'indent'); } };
+  el.append(ed);
+
+  const atts = h('div', { id: 'atts' });
+  n.att.forEach((a, i) => atts.append(h('div', { class: 'att' }, '📎', h('a', { href: a.data, download: a.name }, a.name), h('span', { class: 'due' }, fmtSize(a.size)),
+    ro ? null : h('button', { title: 'Remove', onclick: () => { n.att.splice(i, 1); n._attDirty = true; touch(n); renderEditor(); } }, '×'))));
+  el.append(atts);
+}
+const fmtSize = b => b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+function onEdit() { const n = curNote; if (!n || n.trashed) return; n.html = $('#ed').innerHTML; touch(n); }
+function touch(n) {
+  n.updated = Date.now();
+  const it = list.find(x => x.id === n.id); if (it) { it.title = n.title; it.updated = n.updated; it.tags = n.tags; it.nb = n.nb; }
+  renderList(); queueNote();
+}
+
+/* ---------- note & notebook actions ---------- */
+async function newNote(html, titleText) {
+  await flushNote();
+  if (isPage() || view.type === 'trash') view = { type: 'all' };
+  const now = Date.now();
+  const n = { title: titleText || '', html: html || '', nb: view.type === 'notebook' ? view.id : S.notebooks[0].id, tags: view.type === 'tag' ? [view.id] : [], pinned: 0, trashed: 0, created: now, updated: now, att: [] };
+  try { n.id = (await api.create(Object.assign(noteBody(n), { created: now }))).id; } catch (e) { setStatus('NOT SAVED: could not create the note.', true); return; }
+  curNote = n; sel = n.id; q = ''; const s = $('#sidetop input'); if (s) s.value = ''; pane = 'note';
+  list.unshift({ id: n.id, title: n.title, snippet: '', nb: n.nb, pinned: 0, trashed: 0, created: now, updated: now, tags: n.tags, att: 0 });
+  renderAll(true); refresh();
+  setTimeout(() => { const t = $('#ttl'); if (t) t.focus(); }, 0);
+}
+async function emptyTrash() { if (confirm('Permanently delete all notes in the trash? This cannot be undone.')) { await api.emptyTrash(); curNote = null; sel = null; renderEditor(); refresh(); } }
+function createNotebook(name, stack) { const b = { id: newId(), name, stack }; S.notebooks.push(b); scheduleSave(); return b; }
+async function editNotebook(b) {
+  const name = prompt('Notebook name (leave empty to delete the notebook)', b.name); if (name === null) return;
+  if (!name.trim()) {
+    if (S.notebooks.length < 2) { alert('You need at least one notebook.'); return; }
+    const rest = S.notebooks.filter(x => x !== b);
+    if (!confirm('Delete notebook "' + b.name + '"? Its notes move to "' + rest[0].name + '". No notes are deleted.')) return;
+    await flushNote(); await api.move(b.id, rest[0].id); S.notebooks = rest;
+    if (view.type === 'notebook' && view.id === b.id) view = { type: 'all' };
+    if (curNote && curNote.nb === b.id) curNote.nb = rest[0].id;
+  } else { b.name = name.trim(); const st = prompt('Stack / group (optional)', b.stack || ''); if (st !== null) b.stack = st.trim(); }
+  await saveMeta(); renderAll(true); refresh();
+}
+async function editTag(t) {
+  const nn = prompt('Rename tag (leave empty to remove it from all notes)', t); if (nn === null) return;
+  const r = nn.trim().replace(/^#/, '').replace(/\s+/g, '-');
+  await flushNote(); await api.renameTag(t, r);
+  if (view.type === 'tag' && view.id === t) view = r ? { type: 'tag', id: r } : { type: 'all' };
+  if (curNote) { curNote.tags = curNote.tags.filter(x => x !== t); if (r && !curNote.tags.includes(r)) curNote.tags.push(r); renderEditor(); }
+  refresh();
+}
+
+/* ---------- attachments & images ---------- */
+function addFiles(files, inline) {
+  const n = curNote; if (!n || n.trashed) return;
+  for (const f of files) {
+    if (f.size > 8 * 1048576) { alert(f.name + ' is larger than 8 MB and was skipped.'); continue; }
+    const r = new FileReader();
+    r.onload = () => {
+      if (inline && f.type.startsWith('image/')) { $('#ed').focus(); document.execCommand('insertImage', false, r.result); onEdit(); }
+      else { n.att.push({ name: f.name, type: f.type, size: f.size, data: r.result }); n._attDirty = true; touch(n); if (curNote === n) renderEditor(); }
+    };
+    r.readAsDataURL(f);
+  }
+}
+$('#fileAtt').onchange = e => { addFiles([...e.target.files], false); e.target.value = ''; };
+$('#fileImg').onchange = e => { addFiles([...e.target.files], true); e.target.value = ''; };
+
+/* ---------- tasks & templates page ---------- */
+const BUILTIN = [
+  { name: 'Meeting notes', html: '<h2>Meeting notes</h2><p><b>Date:</b> </p><p><b>Attendees:</b> </p><h3>Agenda</h3><ul><li><br></li></ul><h3>Notes</h3><p><br></p><h3>Action items</h3><ul class="todo"><li data-done="0"><br></li></ul>' },
+  { name: 'To-do list', html: '<h2>To-do</h2><ul class="todo"><li data-done="0">First task</li><li data-done="0">Second task</li><li data-done="0">Third task</li></ul>' },
+  { name: 'Weekly planner', html: '<h2>Week of </h2>' + ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Weekend'].map(d => '<h3>' + d + '</h3><ul class="todo"><li data-done="0"><br></li></ul>').join('') },
+  { name: 'Project plan', html: '<h2>Project plan</h2><h3>Goal</h3><p><br></p><h3>Milestones</h3><table><tbody><tr><th>Milestone</th><th>Owner</th><th>Due</th></tr><tr><td><br></td><td><br></td><td><br></td></tr></tbody></table><h3>Risks</h3><ul><li><br></li></ul>' },
+  { name: 'Daily journal', html: '<h2>Journal</h2><h3>Grateful for</h3><ul><li><br></li></ul><h3>Today</h3><p><br></p><h3>Reflection</h3><p><br></p>' },
+  { name: 'Receipt / expense log', html: '<h2>Expenses</h2><table><tbody><tr><th>Date</th><th>Vendor</th><th>Amount</th><th>Category</th></tr><tr><td><br></td><td><br></td><td><br></td><td><br></td></tr></tbody></table>' },
+  { name: 'Class notes', html: '<h2>Course / topic</h2><p><b>Date:</b> </p><h3>Key points</h3><ul><li><br></li></ul><h3>Questions</h3><ul><li><br></li></ul><h3>Assignments</h3><ul class="todo"><li data-done="0"><br></li></ul>' }
+];
+function renderPage() {
+  const el = $('#page'); el.textContent = '';
+  if (view.type === 'tasks') {
+    const today = new Date().toISOString().slice(0, 10);
+    const txt = h('input', { type: 'text', placeholder: 'Add a task…' }), due = h('input', { type: 'date' });
+    const add = () => { const t = txt.value.trim(); if (!t) return; S.tasks.push({ id: newId(), text: t, due: due.value, done: false }); scheduleSave(); renderAll(); };
+    txt.onkeydown = e => { if (e.key === 'Enter') add(); };
+    el.append(h('button', { id: 'back', style: 'margin-bottom:8px', onclick: () => { pane = 'nav'; renderAll(); } }, '‹ Menu'), h('h2', {}, 'Tasks'), h('div', { class: 'addrow' }, txt, due, h('button', { class: 'primary', onclick: add }, 'Add')),
+      h('div', { class: 'tabs' }, ...['open', 'done', 'all'].map(t => h('button', { class: taskTab === t ? 'on' : '', onclick: () => { taskTab = t; renderPage(); } }, t[0].toUpperCase() + t.slice(1)))));
+    const tl = S.tasks.filter(t => taskTab === 'all' || (taskTab === 'done') === t.done).sort((a, b) => (a.done - b.done) || (a.due || '9').localeCompare(b.due || '9'));
+    if (!tl.length) el.append(h('div', { class: 'empty' }, 'Nothing here.'));
+    for (const t of tl) {
+      const cls = t.done || !t.due ? '' : t.due < today ? ' over' : t.due === today ? ' today' : '';
+      const cb = h('input', { type: 'checkbox', checked: t.done }); cb.onchange = () => { t.done = cb.checked; scheduleSave(); renderAll(); };
+      el.append(h('div', { class: 'trow' + (t.done ? ' done' : '') }, cb, h('span', { class: 'tx', ondblclick: () => { const v = prompt('Edit task', t.text); if (v && v.trim()) { t.text = v.trim(); scheduleSave(); renderPage(); } } }, t.text),
+        t.due ? h('span', { class: 'due' + cls }, (cls === ' over' ? 'Overdue · ' : '') + t.due) : null,
+        h('button', { title: 'Delete', onclick: () => { S.tasks = S.tasks.filter(x => x !== t); scheduleSave(); renderAll(); } }, '×')));
+    }
+  } else if (view.type === 'templates') {
+    el.append(h('button', { id: 'back', style: 'margin-bottom:8px', onclick: () => { pane = 'nav'; renderAll(); } }, '‹ Menu'), h('h2', {}, 'Templates'));
+    const g = h('div', { class: 'grid' });
+    for (const t of BUILTIN) g.append(h('div', { class: 'card', onclick: () => newNote(t.html, t.name) }, h('b', {}, t.name), h('span', {}, 'Built-in')));
+    for (const t of S.templates) g.append(h('div', { class: 'card', onclick: () => newNote(t.html, t.name) }, h('b', {}, t.name), h('span', {}, 'Yours · '), h('button', { class: 'danger', onclick: e => { e.stopPropagation(); if (confirm('Delete this template?')) { S.templates = S.templates.filter(x => x !== t); scheduleSave(); renderPage(); } } }, 'Delete')));
+    el.append(g);
+  }
+}
+
+/* ---------- export / import (.enex) ---------- */
+function download(name, text, type) {
+  const a = h('a', { href: URL.createObjectURL(new Blob([text], { type: type || 'text/plain' })), download: name.replace(/[\\/:*?"<>|]/g, '_') });
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+const enDate = ms => new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+function toEnml(html) {
+  return sanitize(html).replace(/<ul class="todo">([\s\S]*?)<\/ul>/g, (_, inner) => '<ul>' + inner.replace(/<li data-done="(\d)">/g, (_m, d) => '<li><en-todo' + (d === '1' ? ' checked="true"' : '') + '/>') + '</ul>')
+    .replace(/<(br|hr)>/g, '<$1/>').replace(/<img([^>]*?)>/g, '<img$1/>').replace(/&nbsp;/g, '&#160;').replace(/]]>/g, ']]&gt;');
+}
+function exportEnex(notes, name) {
+  if (!notes.length) { alert('No notes to export.'); return; }
+  const x = n => n.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  let out = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE en-export SYSTEM "http://xml.evernote.com/pub/evernote-export4.dtd">\n<en-export export-date="' + enDate(Date.now()) + '" application="My Notes" version="1">\n';
+  for (const n of notes) {
+    out += '<note><title>' + x(title(n)) + '</title><content><![CDATA[<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd"><en-note>' + toEnml(n.html) + '</en-note>]]></content><created>' + enDate(n.created) + '</created><updated>' + enDate(n.updated) + '</updated>' + n.tags.map(t => '<tag>' + x(t) + '</tag>').join('');
+    for (const a of n.att) out += '<resource><data encoding="base64">' + a.data.split(',')[1] + '</data><mime>' + x(a.type || 'application/octet-stream') + '</mime><resource-attributes><file-name>' + x(a.name) + '</file-name></resource-attributes></resource>';
+    out += '</note>\n';
+  }
+  download(name + '.enex', out + '</en-export>', 'application/xml');
+}
+async function exportAll() {
+  try {
+    const l = await api.list({ view: 'all', sort: 'created', order: 'asc' }), notes = [];
+    for (const s of l) notes.push(await api.get(s.id));
+    exportEnex(notes, 'all-notes');
+  } catch (e) { setStatus('Export failed.', true); }
+}
+const parseEnDate = s => { const m = /^(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)(\d\d)Z?$/.exec((s || '').trim()); return m ? Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : Date.now(); };
+$('#fileEnex').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const xml = new DOMParser().parseFromString(await f.text(), 'application/xml');
+  if (xml.querySelector('parsererror')) { alert('That file is not valid .enex.'); return; }
+  const nb = createNotebook(f.name.replace(/\.(enex|xml)$/i, '') || 'Imported', '');
+  let count = 0;
+  for (const en of xml.querySelectorAll('note')) {
+    const get = t => (en.querySelector(':scope > ' + t) || {}).textContent || '';
+    const doc = new DOMParser().parseFromString(get('content'), 'text/html');
+    const body = doc.querySelector('en-note') || doc.body;
+    body.querySelectorAll('en-todo').forEach(t => t.replaceWith((t.getAttribute('checked') === 'true' ? '☑ ' : '☐ ')));
+    const res = [...en.querySelectorAll(':scope > resource')].map(r => ({ mime: (r.querySelector('mime') || {}).textContent || '', data: ((r.querySelector('data') || {}).textContent || '').replace(/\s+/g, ''), name: (r.querySelector('file-name') || {}).textContent || 'attachment' }));
+    const imgs = res.filter(r => r.mime.startsWith('image/')); let ii = 0;
+    body.querySelectorAll('en-media').forEach(m => { const t = m.getAttribute('type') || ''; if (t.startsWith('image/') && imgs[ii]) { const im = document.createElement('img'); im.src = 'data:' + imgs[ii].mime + ';base64,' + imgs[ii++].data; m.replaceWith(im); } else m.remove(); });
+    const att = res.filter(r => !imgs.slice(0, ii).includes(r)).map(r => ({ name: r.name, type: r.mime, size: Math.round(r.data.length * 0.75), data: 'data:' + (r.mime || 'application/octet-stream') + ';base64,' + r.data }));
+    const html = sanitize(body.innerHTML);
+    try {
+      await api.create({ title: get('title'), html, text: textOf(html), nb: nb.id, pinned: 0, trashed: 0, created: parseEnDate(get('created')), updated: parseEnDate(get('updated')), tags: [...en.querySelectorAll(':scope > tag')].map(t => t.textContent.trim()).filter(Boolean), att });
+      count++;
+    } catch (err) { setStatus('Import stopped after ' + count + ' notes.', true); break; }
+  }
+  await saveMeta(); go({ type: 'notebook', id: nb.id }); setStatus('Imported ' + count + ' notes'); setTimeout(() => setStatus(''), 2500);
+};
+
+/* ---------- theme ---------- */
+function cycleTheme() {
+  const order = ['auto', 'light', 'dark'], c = document.documentElement.dataset.theme || 'auto', n = order[(order.indexOf(c) + 1) % 3];
+  if (n === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = n;
+  try { n === 'auto' ? localStorage.removeItem('theme') : localStorage.setItem('theme', n); } catch (e) {}
+  setStatus('Theme: ' + n); setTimeout(() => setStatus(''), 1200);
+}
+
+setStatus('');
+load();
+</script>
+</body>
+</html>

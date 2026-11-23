@@ -1,0 +1,6 @@
+notes.db
+notes.db-wal
+notes.db-shm
+notes.json
+notes.json.bak
+sqlite3.exe
