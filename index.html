@@ -2,7 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#00a82d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="My Notes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
 <title>My Notes</title>
 <script>
   try {
@@ -108,10 +116,24 @@
   #status { position:fixed; right:12px; bottom:10px; font-size:13px; color:var(--muted); background:var(--card); border-radius:8px; padding:2px 8px; }
   #status.err { color:#fff; background:var(--danger); font-weight:600; }
   #back, #menu { display:none; }
+  .hint { font-size:12px; opacity:.6; margin:10px 10px 0; }
+  /* iPhone notch / home-indicator safe areas (all env() values are 0 on desktop) */
+  #side { padding-top:calc(12px + env(safe-area-inset-top)); padding-bottom:calc(12px + env(safe-area-inset-bottom)); }
+  .lhead { padding-top:calc(12px + env(safe-area-inset-top)); }
+  #note .tb:first-child, #trashbar { padding-top:calc(8px + env(safe-area-inset-top)); }
+  #page { padding-top:calc(20px + env(safe-area-inset-top)); }
+  #ed { padding-bottom:calc(30px + env(safe-area-inset-bottom)); }
+  #status { bottom:calc(10px + env(safe-area-inset-bottom)); }
+  #app { padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right); }
   /* phone layout */
   @media (max-width: 820px) {
     #app { display:block; }
-    #side, #list, #note, #page { display:none; width:100%; height:100vh; }
+    #side, #list, #note, #page { display:none; width:100%; height:100vh; height:100dvh; }
+    input, select, textarea { font-size:16px !important; }   /* stops iOS Safari zooming in on focus */
+    #note .tb { flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; flex-shrink:0; }
+    #note .tb button { flex-shrink:0; white-space:nowrap; }
+    #note .tb .sp { display:none; }
+    button { -webkit-tap-highlight-color:transparent; }
     body[data-pane=nav] #side { display:flex; }
     body[data-pane=list]:not(.paged) #list { display:flex; }
     body[data-pane=note]:not(.paged) #note { display:flex; }
@@ -136,7 +158,11 @@
 <input type="file" id="fileImg" hidden accept="image/*" multiple>
 <input type="file" id="fileEnex" hidden accept=".enex,.xml">
 <script>
-const DEMO = new URLSearchParams(location.search).has('demo');
+// MODE: 'server' = PC app on localhost (SQLite via server.ps1); 'device' = stand-alone, notes stored in this
+// browser's IndexedDB (the iPhone/PWA version, any non-localhost host, or localhost with ?local); 'demo' = temporary sample data.
+const QS = new URLSearchParams(location.search);
+const MODE = QS.has('demo') ? 'demo' : (['localhost', '127.0.0.1', '[::1]'].includes(location.hostname) && !QS.has('local')) ? 'server' : 'device';
+const DEMO = MODE === 'demo';
 const $ = (s, r = document) => r.querySelector(s);
 function h(tag, props, ...kids) {
   const e = document.createElement(tag);
@@ -179,8 +205,11 @@ const netApi = {
   move: (from, to) => fetch('/api/move', { method: 'POST', headers: JSONH, body: JSON.stringify({ from, to }) }).then(ok),
   renameTag: (from, to) => fetch('/api/tag-rename', { method: 'POST', headers: JSONH, body: JSON.stringify({ from, to }) }).then(ok)
 };
-function demoApi() {
-  const db = []; let nid = 1;
+// In-memory note store with the same interface as netApi. `store` (optional) writes changes through to
+// persistent storage; used by ?demo (no store) and by the on-device mode (IndexedDB store).
+function memApi(db, store) {
+  let nid = 1 + Math.max(0, ...db.map(n => n.id));
+  const P = store || {};
   const snip = (n, words) => {
     if (!words.length) return n.text.slice(0, 160);
     const i = n.text.toLowerCase().indexOf(words[0]); if (i < 0) return n.text.slice(0, 160);
@@ -209,27 +238,63 @@ function demoApi() {
       return l.map(n => ({ id: n.id, title: n.title, nb: n.nb, pinned: n.pinned, trashed: n.trashed, created: n.created, updated: n.updated, tags: n.tags, att: n.att.length, snippet: snip(n, words) }));
     },
     async get(id) { return JSON.parse(JSON.stringify(db.find(n => n.id === id))); },
-    async create(b) { const n = Object.assign({ title: '', html: '', text: '', nb: 1, pinned: 0, trashed: 0, tags: [], att: [] }, JSON.parse(JSON.stringify(b)), { id: nid++ }); db.push(n); return { id: n.id }; },
-    async save(id, b) { const n = db.find(x => x.id === id); Object.assign(n, JSON.parse(JSON.stringify(b))); },
-    async del(id) { db.splice(db.findIndex(n => n.id === id), 1); },
-    async emptyTrash() { for (let i = db.length - 1; i >= 0; i--) if (db[i].trashed) db.splice(i, 1); },
+    async create(b) {
+      const n = Object.assign({ title: '', html: '', text: '', nb: 1, pinned: 0, trashed: 0, tags: [], att: [] }, JSON.parse(JSON.stringify(b)), { id: nid++ });
+      if (P.put) await P.put([n]);
+      db.push(n); return { id: n.id };
+    },
+    async save(id, b) {
+      const n = db.find(x => x.id === id), copy = Object.assign({}, n, JSON.parse(JSON.stringify(b)));
+      if (P.put) await P.put([copy]);
+      Object.assign(n, copy);
+    },
+    async del(id) { if (P.del) await P.del([id]); db.splice(db.findIndex(n => n.id === id), 1); },
+    async emptyTrash() { const ids = db.filter(n => n.trashed).map(n => n.id); if (P.del) await P.del(ids); for (let i = db.length - 1; i >= 0; i--) if (db[i].trashed) db.splice(i, 1); },
     async summary() {
       const live = db.filter(n => !n.trashed), c = { all: live.length, pinned: live.filter(n => n.pinned).length, trash: db.length - live.length, nb: {}, tags: {} };
       for (const n of live) { c.nb[n.nb] = (c.nb[n.nb] || 0) + 1; for (const t of n.tags) c.tags[t] = (c.tags[t] || 0) + 1; }
       return c;
     },
-    async getMeta() { return {}; }, async putMeta() {},
-    async move(from, to) { for (const n of db) if (n.nb === from) n.nb = to; },
-    async renameTag(from, to) { for (const n of db) if (n.tags.includes(from)) { n.tags = n.tags.filter(t => t !== from); if (to && !n.tags.includes(to)) n.tags.push(to); } }
+    async getMeta() { return P.getMeta ? P.getMeta() : {}; },
+    async putMeta(m) { if (P.putMeta) await P.putMeta(m); },
+    async move(from, to) { const ch = db.filter(n => n.nb === from); if (P.put) await P.put(ch.map(n => Object.assign({}, n, { nb: to }))); for (const n of ch) n.nb = to; },
+    async renameTag(from, to) {
+      const ch = db.filter(n => n.tags.includes(from)), fix = n => { const t = n.tags.filter(x => x !== from); if (to && !t.includes(to)) t.push(to); return t; };
+      if (P.put) await P.put(ch.map(n => Object.assign({}, n, { tags: fix(n) })));
+      for (const n of ch) n.tags = fix(n);
+    }
   };
 }
-const api = DEMO ? demoApi() : netApi;
+// On-device storage: every note is one IndexedDB record; all notes are loaded into memory at start-up
+// (fine for a personal notebook) and searched there, with changes written through to IndexedDB.
+async function deviceApi() {
+  const d = await new Promise((res, rej) => {
+    const r = indexedDB.open('mynotes', 1);
+    r.onupgradeneeded = () => { r.result.createObjectStore('notes', { keyPath: 'id' }); r.result.createObjectStore('meta', { keyPath: 'key' }); };
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+  const readAll = name => new Promise((res, rej) => { const r = d.transaction(name).objectStore(name).getAll(); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  const write = (name, fn) => new Promise((res, rej) => {
+    const t = d.transaction(name, 'readwrite'); fn(t.objectStore(name));
+    t.oncomplete = () => res(); t.onerror = t.onabort = () => rej(t.error);
+  });
+  const notes = await readAll('notes');
+  const meta = Object.fromEntries((await readAll('meta')).map(r => [r.key, r.value]));
+  return memApi(notes, {
+    put: arr => write('notes', s => arr.forEach(n => s.put(n))),
+    del: ids => write('notes', s => ids.forEach(id => s.delete(id))),
+    getMeta: () => meta,
+    putMeta: m => write('meta', s => ['notebooks', 'tasks', 'templates', 'nextId'].forEach(k => s.put({ key: k, value: JSON.parse(JSON.stringify(m[k])) })))
+  });
+}
+let api = netApi;   // chosen in load()
 
 /* ---------- loading, migration, saving ---------- */
 async function load() {
   try {
+    api = MODE === 'demo' ? memApi([]) : MODE === 'device' ? await deviceApi() : netApi;
     S = Object.assign({ notebooks: [], tasks: [], templates: [], nextId: 1 }, await api.getMeta());
-    if (!DEMO) await maybeMigrate();
+    if (MODE === 'server') await maybeMigrate();
     if (!S.notebooks.length) {
       S.notebooks.push({ id: newId(), name: 'First Notebook', stack: '' });
       if (DEMO) S.notebooks.push({ id: newId(), name: 'Work', stack: 'Projects' });
@@ -237,7 +302,11 @@ async function load() {
     }
     if (DEMO) await seedDemo();
     loaded = true; setStatus('');
-  } catch (e) { setStatus('NOT SAVED: cannot reach the server. Run start.bat.', true); }
+    if (MODE === 'device') {
+      try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}   // ask the browser not to evict our data
+      if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});             // offline support
+    }
+  } catch (e) { setStatus(MODE === 'server' ? 'NOT SAVED: cannot reach the server. Run start.bat.' : 'Cannot open on-device storage (private browsing?): ' + e.message, true); }
   renderAll(); refresh();
 }
 async function seedDemo() {
@@ -294,7 +363,7 @@ async function refresh() {
     const [l, c] = await Promise.all([api.list(buildParams()), api.summary()]);
     if (seq !== refreshSeq) return;
     list = l; counts = c; renderSide(); renderList();
-  } catch (e) { if (seq === refreshSeq) setStatus('Cannot reach the server. Run start.bat.', true); }
+  } catch (e) { if (seq === refreshSeq) setStatus(MODE === 'server' ? 'Cannot reach the server. Run start.bat.' : 'Could not read your notes.', true); }
 }
 function buildParams() {
   const p = {};
@@ -402,6 +471,7 @@ function renderSide() {
   for (const t of tk) nav.append(navItem('# ' + t, counts.tags[t], view.type === 'tag' && view.id === t, () => go({ type: 'tag', id: t }),
     h('button', { class: 'mini', title: 'Rename or delete tag', onclick: e => { e.stopPropagation(); editTag(t); } }, '✎')));
   nav.append(navItem('🗑 Trash', counts.trash, view.type === 'trash', () => go({ type: 'trash' })));
+  if (MODE === 'device') nav.append(h('div', { class: 'hint' }, 'Notes are stored on this device only. Use “Export all” now and then for a backup.'));
   nav.append(h('div', { class: 'foot' },
     h('button', { onclick: () => $('#fileEnex').click() }, 'Import .enex'),
     h('button', { onclick: exportAll }, 'Export all'),
@@ -505,7 +575,7 @@ function renderEditor() {
     h('button', { class: 'danger', onclick: async () => { if (confirm('Delete this note forever? This cannot be undone.')) { dirty = false; await api.del(n.id); curNote = null; sel = null; renderEditor(); refresh(); } } }, 'Delete forever')));
   const tb = h('div', { class: 'tb' }, h('button', { id: 'back', onclick: () => { pane = 'list'; renderAll(); } }, '‹ Back'));
   if (!ro) {
-    for (const [l, t, f] of TB) { const b = h('button', { title: t }, l); b.onmousedown = e => e.preventDefault(); b.onclick = f; tb.append(b); }
+    for (const [l, t, f] of TB) { const b = h('button', { title: t }, l); b.onmousedown = b.onpointerdown = e => e.preventDefault(); b.onclick = f; tb.append(b); }   // keep editor focus/selection on tap
   }
   tb.append(h('span', { class: 'sp' }),
     h('button', { title: 'Pin', onclick: async () => { n.pinned = n.pinned ? 0 : 1; await commit(); renderEditor(); } }, n.pinned ? 'Unpin' : '📌 Pin'),

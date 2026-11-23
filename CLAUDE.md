@@ -32,6 +32,15 @@ Env vars for **test servers** (always use all three so the user's real data is n
 - Note HTML is untrusted (paste, drop, .enex import): always pass through `sanitize()`. Checklists are `<ul class="todo"><li data-done="0|1">`.
 - `?demo` uses an in-memory `demoApi()` (never touches the server data); `?theme=light|dark` forces a theme. `.enex` import/export, HTML export, print/PDF, light/dark theme, phone layout (`body[data-pane]`) are unchanged.
 
+## Storage modes / iPhone web app (PWA)
+
+`index.html` picks `MODE` at start-up: `server` (host is localhost/127.0.0.1: SQLite via `server.ps1`), `device` (any other host, or localhost with `?local`: notes in the browser's IndexedDB, no server), `demo` (`?demo`, in-memory). The iPhone version is the `device` mode, hosted as static files (e.g. GitHub Pages; needs HTTPS) and installed with Safari > Share > Add to Home Screen.
+
+- `memApi(db, store)` is the in-memory note store and search engine (substring word match, same filters/sort/snippets as the server). `deviceApi()` loads every note from IndexedDB (db `mynotes`, stores `notes` and `meta`) into `memApi` and writes changes through. Searching is in memory, so it is not FTS; fine for a personal notebook.
+- PWA files: `manifest.webmanifest`, `sw.js` (stale-while-revalidate app-shell cache; bump `CACHE` to force an update), `icons/` (192, 512, 180 apple-touch; generated with System.Drawing). Use relative URLs everywhere so it works under a GitHub Pages sub-path. `server.ps1` serves these via a fixed whitelist route, only so they can be tested on localhost.
+- iOS specifics: `viewport-fit=cover` + `env(safe-area-inset-*)` padding, 16px inputs on phones (stops focus zoom), `100dvh`, scrollable one-row toolbar, toolbar buttons cancel `pointerdown` so the editor keeps its selection. `navigator.storage.persist()` is requested. The device and PC data are separate: move notes with Export all / Import .enex.
+- Not verified: the service worker could not register in the desktop app's built-in browser pane (script fetch error, likely a pane limitation), and nothing has been run on a real iPhone/Safari.
+
 ## Testing notes
 
 - Never modify or delete `notes.db` / `notes.json` while testing. A test server run without `NOTE_LEGACY` will import and rename the real `notes.json`.

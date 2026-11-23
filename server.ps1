@@ -137,6 +137,16 @@ while ($listener.IsListening) {
     if ($method -eq 'GET' -and ($path -eq '/' -or $path -eq '/index.html')) {
       Send $ctx 200 'text/html; charset=utf-8' ([IO.File]::ReadAllText((Join-Path $root 'index.html'), $utf8))
     }
+    elseif ($method -eq 'GET' -and $path -match '^/(manifest\.webmanifest|sw\.js|icons/[\w.-]+\.png)$') {
+      # Fixed whitelist of PWA files (no generic file serving)
+      $file = Join-Path $root ($path.TrimStart('/') -replace '/', '\')
+      if (Test-Path $file) {
+        $type = switch -Regex ($path) { '\.png$' { 'image/png' } '\.js$' { 'text/javascript' } default { 'application/manifest+json' } }
+        $bytes = [IO.File]::ReadAllBytes($file)
+        $ctx.Response.StatusCode = 200; $ctx.Response.ContentType = $type; $ctx.Response.Headers.Add('Cache-Control', 'no-store')
+        $ctx.Response.ContentLength64 = $bytes.Length; $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length); $ctx.Response.Close()
+      } else { Send $ctx 404 'text/plain' 'Not found' }
+    }
     elseif ($method -eq 'GET' -and $path -eq '/api/notes') {
       $b = Build-List $qs
       SendJson $ctx (Run-Sql $b.sql $b.params)

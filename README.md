@@ -10,7 +10,10 @@ A local, Evernote-style notes app for Windows. Plain HTML/CSS/JS front end, a Po
 - Import/export `.enex` (Evernote), HTML export, print/PDF
 - Light/dark theme, phone layout
 
-## Setup
+## iPhone / iPad (installable web app)
+The same app runs stand-alone on iOS: notes are stored on the device (IndexedDB), work offline, and need no PC or account. Open the hosted page in **Safari**, tap **Share → Add to Home Screen**, and launch it from the icon. Notes stay on that device; use **Export all** (.enex) for backups and to move notes between the phone and the PC.
+
+## Setup (Windows PC version)
 1. Download the **sqlite-tools-win-x64** zip from <https://www.sqlite.org/download.html> (free, public domain) and put `sqlite3.exe` in this folder, next to `server.ps1`.
 2. Run `start.bat`. It starts the server on <http://localhost:8766/> and opens your browser.
 
