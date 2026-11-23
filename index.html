@@ -408,7 +408,7 @@ function cleanNode(node) {
         ((n === 'colspan' || n === 'rowspan') && /^\d{1,2}$/.test(v)) ||
         (n === 'alt' && c.tagName === 'IMG');
       if (n === 'style') {
-        const okS = v.split(';').map(s => s.trim()).filter(s => /^(color|background-color|text-align|font-weight|text-decoration)\s*:\s*[#\w\s(),.%-]+$/i.test(s)).join(';');
+        const okS = v.split(';').map(s => s.trim()).filter(s => /^(color|background-color|text-align|font-weight|font-size|text-decoration)\s*:\s*[#\w\s(),.%-]+$/i.test(s)).join(';');
         if (okS) c.setAttribute('style', okS); else c.removeAttribute('style');
       } else if (!keep) c.removeAttribute(n);
     }
@@ -542,12 +542,32 @@ function renderList() {
 
 const TB = [
   ['B', 'Bold', () => cmd('bold')], ['I', 'Italic', () => cmd('italic')], ['U', 'Underline', () => cmd('underline')], ['S', 'Strikethrough', () => cmd('strikeThrough')],
+  ['A+', 'Increase font size', () => resize(2)], ['A−', 'Decrease font size', () => resize(-2)],
   ['• List', 'Bulleted list', () => cmd('insertUnorderedList')], ['1. List', 'Numbered list', () => cmd('insertOrderedList')],
   ['❝', 'Quote', () => cmd('formatBlock', 'blockquote')], ['</>', 'Code block', () => cmd('formatBlock', 'pre')], ['🖍', 'Highlight', highlight],
   ['🔗', 'Link', link], ['▦', 'Insert table', table], ['―', 'Divider', () => cmd('insertHorizontalRule')], ['📅', 'Insert date', () => cmd('insertText', new Date().toLocaleDateString(undefined, { dateStyle: 'medium' }))],
   ['🖼', 'Insert image', () => $('#fileImg').click()], ['📎', 'Attach file', () => $('#fileAtt').click()], ['🔍', 'Find in note', toggleFind]
 ];
 function cmd(c, v) { $('#ed').focus(); document.execCommand(c, false, v); onEdit(); }
+// Change the font size of the selected text by `delta` px. execCommand('fontSize') makes <font> tags, which the
+// sanitizer drops, so they are swapped for <span style="font-size:..px"> and the selection is kept for repeat clicks.
+function resize(delta) {
+  const ed = $('#ed'), sel = getSelection();
+  if (!sel.rangeCount || sel.isCollapsed || !ed.contains(sel.anchorNode)) { setStatus('Select some text first'); setTimeout(() => setStatus(''), 1500); return; }
+  const rg = sel.getRangeAt(0);   // the element/text where the selection starts decides the current size
+  let node = rg.startContainer;
+  if (node.nodeType === 1 && node.childNodes[rg.startOffset]) node = node.childNodes[rg.startOffset];
+  if (node.nodeType !== 1) node = node.parentNode;
+  const next = Math.min(64, Math.max(8, Math.round((parseFloat(getComputedStyle(node).fontSize) || 16) + delta)));
+  document.execCommand('fontSize', false, '7');
+  const spans = [...ed.querySelectorAll('font[size="7"]')].map(f => {
+    const s = document.createElement('span'); s.style.fontSize = next + 'px'; s.append(...f.childNodes); f.replaceWith(s);
+    s.querySelectorAll('[style*="font-size"]').forEach(e => e.style.removeProperty('font-size'));   // inner old sizes would win
+    return s;
+  });
+  if (spans.length) { const r = document.createRange(); r.setStartBefore(spans[0]); r.setEndAfter(spans[spans.length - 1]); sel.removeAllRanges(); sel.addRange(r); }
+  onEdit();
+}
 function highlight() { const t = getSelection().toString(); if (t) cmd('insertHTML', '<mark>' + esc(t) + '</mark>'); }
 function link() {
   let u = prompt('Link address'); if (!u) return;
