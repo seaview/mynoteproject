@@ -542,20 +542,12 @@ function renderList() {
 
 const TB = [
   ['B', 'Bold', () => cmd('bold')], ['I', 'Italic', () => cmd('italic')], ['U', 'Underline', () => cmd('underline')], ['S', 'Strikethrough', () => cmd('strikeThrough')],
-  ['H1', 'Heading 1', () => cmd('formatBlock', 'h1')], ['H2', 'Heading 2', () => cmd('formatBlock', 'h2')], ['¶', 'Normal text', () => cmd('formatBlock', 'p')],
-  ['• List', 'Bulleted list', () => cmd('insertUnorderedList')], ['1. List', 'Numbered list', () => cmd('insertOrderedList')], ['☑ To-do', 'Checklist', checklist],
+  ['• List', 'Bulleted list', () => cmd('insertUnorderedList')], ['1. List', 'Numbered list', () => cmd('insertOrderedList')],
   ['❝', 'Quote', () => cmd('formatBlock', 'blockquote')], ['</>', 'Code block', () => cmd('formatBlock', 'pre')], ['🖍', 'Highlight', highlight],
   ['🔗', 'Link', link], ['▦', 'Insert table', table], ['―', 'Divider', () => cmd('insertHorizontalRule')], ['📅', 'Insert date', () => cmd('insertText', new Date().toLocaleDateString(undefined, { dateStyle: 'medium' }))],
   ['🖼', 'Insert image', () => $('#fileImg').click()], ['📎', 'Attach file', () => $('#fileAtt').click()], ['🔍', 'Find in note', toggleFind]
 ];
 function cmd(c, v) { $('#ed').focus(); document.execCommand(c, false, v); onEdit(); }
-function checklist() {
-  const ed = $('#ed'); ed.focus();
-  const s = getSelection(); let ul = s.anchorNode && (s.anchorNode.nodeType === 1 ? s.anchorNode : s.anchorNode.parentNode).closest('ul');
-  if (!ul || !ed.contains(ul)) { document.execCommand('insertUnorderedList'); ul = (getSelection().anchorNode.nodeType === 1 ? getSelection().anchorNode : getSelection().anchorNode.parentNode).closest('ul'); }
-  if (ul && ed.contains(ul)) { ul.classList.toggle('todo'); ul.querySelectorAll('li').forEach(li => li.dataset.done = li.dataset.done || '0'); }
-  onEdit();
-}
 function highlight() { const t = getSelection().toString(); if (t) cmd('insertHTML', '<mark>' + esc(t) + '</mark>'); }
 function link() {
   let u = prompt('Link address'); if (!u) return;
@@ -578,10 +570,6 @@ function renderEditor() {
     for (const [l, t, f] of TB) { const b = h('button', { title: t }, l); b.onmousedown = b.onpointerdown = e => e.preventDefault(); b.onclick = f; tb.append(b); }   // keep editor focus/selection on tap
   }
   tb.append(h('span', { class: 'sp' }),
-    h('button', { title: 'Pin', onclick: async () => { n.pinned = n.pinned ? 0 : 1; await commit(); renderEditor(); } }, n.pinned ? 'Unpin' : '📌 Pin'),
-    h('button', { title: 'Save as template', onclick: () => { S.templates.push({ id: newId(), name: title(n), html: n.html }); scheduleSave(); setStatus('Saved as template'); setTimeout(() => setStatus(''), 1500); } }, 'Template'),
-    h('button', { onclick: () => exportEnex([n], title(n)) }, '.enex'),
-    h('button', { onclick: () => download(title(n) + '.html', '<!doctype html><meta charset="utf-8"><title>' + esc(title(n)) + '</title><h1>' + esc(title(n)) + '</h1>' + sanitize(n.html), 'text/html') }, 'HTML'),
     h('button', { onclick: () => print() }, 'Print / PDF'),
     ro ? null : h('button', { class: 'danger', onclick: async () => { n.trashed = 1; await commit(); curNote = null; sel = null; pane = 'list'; renderAll(true); } }, 'Trash'));
   el.append(tb);
