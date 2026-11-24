@@ -88,7 +88,12 @@ function Build-List($qs) {
   if ([long]::TryParse($qs['nb'], [ref]$n)) { $p.nb = $n; $where += "n.nb=json_extract(@P,'`$.nb')" }
   if ($qs['nbs']) { $ids = @(); foreach ($x in $qs['nbs'].Split(',')) { if ([long]::TryParse($x, [ref]$n)) { $ids += $n } }; $p.nbs = @($ids); $where += "n.nb IN (SELECT value FROM json_each(@P,'`$.nbs'))" }
   if ($qs['tag']) { $p.tag = $qs['tag']; $where += "EXISTS(SELECT 1 FROM note_tags t WHERE t.note_id=n.id AND t.tag=json_extract(@P,'`$.tag'))" }
-  if ($qs['title']) { $p.title = $qs['title']; $where += "n.title LIKE '%'||replace(replace(replace(json_extract(@P,'`$.title'),'\','\\'),'%','\%'),'_','\_')||'%' ESCAPE '\'" }
+  if ($qs['title']) {
+    # "title" box matches the title OR any tag of the note (LIKE wildcards in the user's text are escaped)
+    $p.title = $qs['title']
+    $esc = "replace(replace(replace(json_extract(@P,'`$.title'),'\','\\'),'%','\%'),'_','\_')"
+    $where += "(n.title LIKE '%'||$esc||'%' ESCAPE '\' OR EXISTS(SELECT 1 FROM note_tags t WHERE t.note_id=n.id AND t.tag LIKE '%'||$esc||'%' ESCAPE '\'))"
+  }
   $field = if ($qs['field'] -eq 'created') { 'created' } else { 'updated' }
   $dated = $false
   if ([long]::TryParse($qs['from'], [ref]$n)) { $p.from = $n; $where += "n.$field>=json_extract(@P,'`$.from')"; $dated = $true }

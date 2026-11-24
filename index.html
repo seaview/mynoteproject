@@ -82,6 +82,9 @@
   #meta { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 20px 0; }
   .chip { display:inline-flex; align-items:center; gap:4px; background:var(--sel); border:1px solid var(--line); border-radius:99px; padding:1px 4px 1px 10px; font-size:13px; }
   .chip button { border:0; background:none; padding:0 4px; color:var(--muted); }
+  .chip .lbl { cursor:pointer; }
+  #meta .newtag { width:110px; }
+  #meta > button { padding:4px 10px; }
   #ttl { border:0; outline:0; font-size:26px; font-weight:700; padding:12px 20px 4px; background:transparent; width:100%; }
   #find { display:none; padding:6px 20px; gap:6px; }
   #find.on { display:flex; }
@@ -222,7 +225,7 @@ function memApi(db, store) {
       if (p.nb) l = l.filter(n => n.nb == p.nb);
       if (p.nbs) { const s = p.nbs.split(',').map(Number); l = l.filter(n => s.includes(n.nb)); }
       if (p.tag) l = l.filter(n => n.tags.some(t => t.toLowerCase() === p.tag.toLowerCase()));
-      if (p.title) l = l.filter(n => n.title.toLowerCase().includes(p.title.toLowerCase()));
+      if (p.title) { const w = p.title.toLowerCase(); l = l.filter(n => n.title.toLowerCase().includes(w) || n.tags.some(t => t.toLowerCase().includes(w))); }   // title OR tag
       const f = p.field === 'created' ? 'created' : 'updated';
       if (p.from) l = l.filter(n => n[f] >= +p.from);
       if (p.to) l = l.filter(n => n[f] <= +p.to);
@@ -436,7 +439,7 @@ function renderAll(editorToo) { renderSide(); renderList(); if (editorToo || !$(
 function ensureSideTop() {
   const side = $('#side');
   if ($('#sidetop')) return;
-  const search = h('input', { type: 'search', placeholder: 'Search content (tag:x notebook:y has:image)', value: q });
+  const search = h('input', { type: 'search', placeholder: 'Search text & tags (tag:x notebook:y)', value: q });
   search.oninput = () => {
     q = search.value;
     if (q && (isPage() || view.type === 'trash')) { view = { type: 'all' }; curNote = null; sel = null; renderEditor(); renderPage(); renderSide(); }
@@ -495,7 +498,7 @@ function viewName() {
 }
 function ensureListShell() {
   const el = $('#list'); if ($('#items')) return;
-  const titleIn = h('input', { type: 'search', placeholder: 'Search note titles', value: F.title });
+  const titleIn = h('input', { type: 'search', placeholder: 'Search titles and tags', value: F.title });
   titleIn.oninput = () => { F.title = titleIn.value; refreshSoon(); };
   const field = h('select', { title: 'Which date to filter and sort by' }, h('option', { value: 'updated' }, 'Updated'), h('option', { value: 'created' }, 'Created'));
   field.onchange = () => { F.field = field.value; refreshSoon(); };
@@ -605,12 +608,40 @@ function renderEditor() {
     } else { n.nb = +nbSel.value; touch(n); }
   };
   const meta = h('div', { id: 'meta' }, nbSel);
-  for (const t of n.tags) meta.append(h('span', { class: 'chip' }, '#' + t, ro ? null : h('button', { onclick: () => { n.tags = n.tags.filter(x => x !== t); touch(n); renderEditor(); } }, '×')));
+  // Tags: free-text labels. Add (type + Enter / comma / Add button), edit (click a tag), delete (x).
+  const cleanTag = s => s.replace(/^#+/, '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  const hasTag = (t, except) => n.tags.some(x => x !== except && x.toLowerCase() === t.toLowerCase());
+  for (const t of n.tags) {
+    const label = h('span', { class: 'lbl', title: ro ? '' : 'Click to edit this tag' }, '#' + t);
+    const chip = h('span', { class: 'chip' }, label, ro ? null : h('button', { title: 'Delete tag', 'aria-label': 'Delete tag ' + t, onclick: () => { n.tags = n.tags.filter(x => x !== t); touch(n); renderEditor(); } }, '×'));
+    if (!ro) label.onclick = () => {
+      const inp = h('input', { type: 'text', value: t, size: Math.max(6, t.length + 1), maxlength: 40, list: 'taglist', 'aria-label': 'Edit tag' });
+      let done = false;
+      const finish = save => {
+        if (done) return; done = true;
+        const v = cleanTag(inp.value);
+        if (!save || v === t) { inp.replaceWith(chip); return; }   // nothing changed: put the tag back without redrawing
+        if (!v || hasTag(v, t)) n.tags = n.tags.filter(x => x !== t);   // empty = delete; same as another tag = merge
+        else n.tags = n.tags.map(x => x === t ? v : x);
+        touch(n); renderEditor();
+      };
+      inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') finish(false); };
+      inp.onblur = () => finish(true);
+      chip.replaceWith(inp); inp.focus(); inp.select();
+    };
+    meta.append(chip);
+  }
+  meta.append(h('datalist', { id: 'taglist' }, ...Object.keys(counts.tags).map(t => h('option', { value: t }))));
   if (!ro) {
-    const ti = h('input', { type: 'text', placeholder: '+ tag', size: 8, list: 'taglist' });
-    const dl = h('datalist', { id: 'taglist' }, ...Object.keys(counts.tags).map(t => h('option', { value: t })));
-    ti.onkeydown = e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); const t = ti.value.trim().replace(/^#/, '').replace(/[,\s]+/g, '-'); if (t && !n.tags.some(x => x.toLowerCase() === t.toLowerCase())) { n.tags.push(t); touch(n); renderEditor(); $('#meta input').focus(); } } };
-    meta.append(ti, dl);
+    const ti = h('input', { type: 'text', class: 'newtag', placeholder: 'Add tag…', size: 10, maxlength: 80, list: 'taglist', enterkeyhint: 'done', title: 'Type a tag and press Enter. Use commas to add several.' });
+    const add = () => {
+      let changed = false;
+      for (const part of ti.value.split(',')) { const v = cleanTag(part); if (v && !hasTag(v)) { n.tags.push(v); changed = true; } }
+      ti.value = '';
+      if (changed) { touch(n); renderEditor(); const nt = $('#meta .newtag'); if (nt) nt.focus(); }
+    };
+    ti.onkeydown = e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); add(); } };
+    meta.append(ti, h('button', { title: 'Add tag', onclick: add }, '+ Add'));
   }
   meta.append(h('span', { class: 'due' }, 'Created ' + new Date(n.created).toLocaleString() + ' · ' + textOf(n.html).split(' ').filter(Boolean).length + ' words'));
   el.append(ttl, meta);
